@@ -10,8 +10,6 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- PWA Manifest Support -->
-    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#facc15">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
@@ -29,4 +27,145 @@
                 <p class="text-xs text-gray-900 font-medium">📍 Raebareli-Lalganj Rural Network</p>
             </div>
         </div>
-        <div class="flex bg-white/80 p-1 rounded-full shadow-inner space-x-1
+        <div class="flex bg-white/80 p-1 rounded-full shadow-inner space-x-1">
+            <button id="riderTab" onclick="switchMode('rider')" class="px-3 py-1 text-xs font-bold rounded-full bg-yellow-400 text-black shadow">🚲 सवारी</button>
+            <button id="captainTab" onclick="switchMode('captain')" class="px-3 py-1 text-xs font-bold rounded-full text-gray-600">🛺 कैप्टन</button>
+        </div>
+    </header>
+
+    <!-- Map Container -->
+    <div id="map" class="w-full flex-grow z-10" style="height: 50vh;"></div>
+
+    <!-- Bottom Interactive Panel -->
+    <div id="panel" class="bg-white rounded-t-3xl shadow-2xl p-4 z-20">
+        <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3"></div>
+
+        <!-- Rider View -->
+        <div id="riderView">
+            <div class="space-y-3">
+                <!-- Pickup Input -->
+                <div class="flex items-center bg-gray-50 border border-gray-200 rounded-xl p-2.5">
+                    <div class="w-3 h-3 bg-green-600 rounded-full mr-3"></div>
+                    <div class="flex-grow">
+                        <p class="text-[10px] text-gray-400 font-semibold uppercase">PICKUP (15km Radius GPS)</p>
+                        <input type="text" id="pickupInput" value="Aihar / Current GPS Location" class="w-full bg-transparent text-sm font-medium focus:outline-none">
+                    </div>
+                    <button onclick="getLiveGPS()" class="text-xs bg-yellow-100 text-yellow-800 font-bold px-2.5 py-1 rounded-lg">GPS</button>
+                </div>
+
+                <!-- Drop Destination Input -->
+                <div class="flex items-center bg-gray-50 border border-gray-200 rounded-xl p-2.5">
+                    <div class="w-3 h-3 bg-red-600 rounded-full mr-3"></div>
+                    <div class="flex-grow">
+                        <p class="text-[10px] text-gray-400 font-semibold uppercase">DROP DESTINATION</p>
+                        <input type="text" id="dropInput" oninput="handleSearch(this.value)" class="w-full bg-transparent text-sm font-medium focus:outline-none" placeholder="कहाँ जाना है? (Search 15km Zone)...">
+                    </div>
+                </div>
+
+                <!-- Search Suggestions -->
+                <div id="suggestionsBox" class="hidden bg-white border border-gray-100 rounded-xl shadow-lg max-h-28 overflow-y-auto p-1 divide-y divide-gray-100"></div>
+
+                <!-- Quick Rural Destinations -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <p class="text-xs font-bold text-gray-500">नज़दीकी गंतव्य (सस्ता ग्रामीण किराया):</p>
+                        <span class="text-[10px] bg-green-100 text-green-800 font-bold px-2 py-0.5 rounded-full">₹10 Base + ₹5/km</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div onclick="selectDestination('ऐहार ग्राम पंचायत', 1.2, 12)" class="p-2 bg-yellow-50/60 border border-yellow-200 rounded-xl cursor-pointer">
+                            <p class="text-xs font-bold">ऐहार ग्राम पंचायत</p>
+                            <p class="text-[10px] text-gray-600">1.2 km • मात्र ₹12</p>
+                        </div>
+                        <div onclick="selectDestination('लालगंज मुख्य बाजार', 7.2, 35)" class="p-2 bg-yellow-50/60 border border-yellow-200 rounded-xl cursor-pointer">
+                            <p class="text-xs font-bold">लालगंज मुख्य बाजार</p>
+                            <p class="text-[10px] text-gray-600">7.2 km • मात्र ₹35</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Captain View -->
+        <div id="captainView" class="hidden space-y-3">
+            <div class="bg-yellow-50 border border-yellow-300 p-3 rounded-xl flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-sm">🛺 Captain Mode (Online)</h3>
+                    <p class="text-xs text-gray-600">Listening to 15km radius rural rides...</p>
+                </div>
+                <span class="w-3 h-3 bg-green-500 rounded-full animate-ping"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+        
+        let map = L.map('map').setView([26.2300, 81.2400], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+
+        const ruralLocations = [
+            { name: "ऐहार ग्राम पंचायत", dist: 1.2, fare: 12 },
+            { name: "मुरई का बाग चौराहा", dist: 4.8, fare: 24 },
+            { name: "बैलवारा डिग्री कॉलेज", dist: 5.5, fare: 28 },
+            { name: "लालगंज मुख्य बाजार", dist: 7.2, fare: 35 },
+            { name: "दलमऊ गंगा घाट", dist: 8.5, fare: 42 }
+        ];
+
+        function switchMode(mode) {
+            if(mode === 'rider') {
+                document.getElementById('riderView').classList.remove('hidden');
+                document.getElementById('captainView').classList.add('hidden');
+                document.getElementById('riderTab').className = "px-3 py-1 text-xs font-bold rounded-full bg-yellow-400 text-black shadow";
+                document.getElementById('captainTab').className = "px-3 py-1 text-xs font-bold rounded-full text-gray-600";
+            } else {
+                document.getElementById('riderView').classList.add('hidden');
+                document.getElementById('captainView').classList.remove('hidden');
+                document.getElementById('captainTab').className = "px-3 py-1 text-xs font-bold rounded-full bg-yellow-400 text-black shadow";
+                document.getElementById('riderTab').className = "px-3 py-1 text-xs font-bold rounded-full text-gray-600";
+            }
+        }
+
+        function handleSearch(query) {
+            const box = document.getElementById('suggestionsBox');
+            if (!query.trim()) {
+                box.classList.add('hidden');
+                return;
+            }
+            const filtered = ruralLocations.filter(l => l.name.toLowerCase().includes(query.toLowerCase()));
+            box.innerHTML = '';
+            box.classList.remove('hidden');
+            
+            if (filtered.length > 0) {
+                filtered.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = "p-2 hover:bg-yellow-50 cursor-pointer text-xs flex justify-between";
+                    div.innerHTML = `<span>📍 ${item.name}</span><span class="font-bold text-green-700">${item.dist} km • ₹${item.fare}</span>`;
+                    div.onclick = () => selectDestination(item.name, item.dist, item.fare);
+                    box.appendChild(div);
+                });
+            } else {
+                box.innerHTML = `<div class="p-2 text-xs text-orange-600">✨ 15km Fallback: Custom location accepted (₹10 Base + ₹5/km).</div>`;
+            }
+        }
+
+        function selectDestination(name, dist, fare) {
+            document.getElementById('dropInput').value = name;
+            document.getElementById('suggestionsBox').classList.add('hidden');
+            alert(`✅ Destination Set: ${name} (${dist} km)\n💰 Fare: ₹${fare}`);
+        }
+
+        function getLiveGPS() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    document.getElementById('pickupInput').value = `Live GPS (${pos.coords.latitude.toFixed(2)}, ${pos.coords.longitude.toFixed(2)})`;
+                    alert("📍 Live GPS synced within 15km zone!");
+                }, () => {
+                    document.getElementById('pickupInput').value = "Aihar Main Road (Default)";
+                });
+            }
+        }
+    </script>
+</body>
+</html>
